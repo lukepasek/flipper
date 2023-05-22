@@ -18,10 +18,12 @@ class FlipperProps {
 
   private static final String FLIPPER_PORTS_PROP_NAME = "flipper.ports";
   private static final String FLIPPER_ALT_PORTS_PROP_NAME = "flipper.alt.ports";
-  private static final int DEFAULT_INSECURE_PORT = 9089;
-  private static final int DEFAULT_SECURE_PORT = 9088;
-  private static final int DEFAULT_ALT_INSECURE_PORT = 9089;
-  private static final int DEFAULT_ALT_SECURE_PORT = 9088;
+  private static final String FLIPPER_HOST_PROP_NAME = "flipper.host";
+  private static final String FLIPPER_ALT_HOST_PROP_NAME = "flipper.alt.host";
+  public static final int DEFAULT_INSECURE_PORT = 9089;
+  public static final int DEFAULT_SECURE_PORT = 9088;
+  public static final int DEFAULT_ALT_INSECURE_PORT = 9089;
+  public static final int DEFAULT_ALT_SECURE_PORT = 9088;
   private static final String TAG = "Flipper";
 
   static int getInsecurePort() {
@@ -86,10 +88,9 @@ class FlipperProps {
     // this function does not read from disk and this tool is for debug only
     StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskReads();
     try {
-      process = Runtime.getRuntime().exec(new String[] {"/system/bin/getprop", propsName});
-      reader =
-          new BufferedReader(
-              new InputStreamReader(process.getInputStream(), Charset.forName("UTF-8")));
+      process = Runtime.getRuntime().exec(new String[] { "/system/bin/getprop", propsName });
+      reader = new BufferedReader(
+          new InputStreamReader(process.getInputStream(), Charset.forName("UTF-8")));
 
       String lastLine = "";
       String line;
