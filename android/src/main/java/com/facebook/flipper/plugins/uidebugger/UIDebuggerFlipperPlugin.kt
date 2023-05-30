@@ -31,7 +31,7 @@ class UIDebuggerFlipperPlugin(val context: UIDContext) : FlipperPlugin {
 
   @Throws(Exception::class)
   override fun onConnect(connection: FlipperConnection) {
-    Log.i(LogTag, "Connected")
+    hasConnectedPreviously = true
     this.context.connectionRef.connection = connection
     this.context.bitmapPool.makeReady()
 
@@ -55,7 +55,6 @@ class UIDebuggerFlipperPlugin(val context: UIDContext) : FlipperPlugin {
   @Throws(Exception::class)
   override fun onDisconnect() {
     this.context.connectionRef.connection = null
-    Log.i(LogTag, "Disconnected")
 
     MetadataRegister.reset()
 
@@ -65,5 +64,11 @@ class UIDebuggerFlipperPlugin(val context: UIDContext) : FlipperPlugin {
 
   override fun runInBackground(): Boolean {
     return false
+  }
+
+  companion object {
+
+    var hasConnectedPreviously: Boolean = false
+      private set
   }
 }

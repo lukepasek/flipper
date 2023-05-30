@@ -23,10 +23,12 @@ import exitHook from 'exit-hook';
 import {attachSocketServer} from './attachSocketServer';
 import {FlipperServerImpl} from '../FlipperServerImpl';
 import {FlipperServerCompanionEnv} from 'flipper-server-companion';
+import {validateAuthToken} from '../utils/certificateUtils';
+import {tracker} from '../utils/tracker';
 
 type Config = {
   port: number;
-  staticDir: string;
+  staticPath: string;
   entry: string;
   tcp: boolean;
 };
@@ -36,10 +38,50 @@ type ReadyForConnections = (
   companionEnv: FlipperServerCompanionEnv,
 ) => Promise<void>;
 
+const verifyAuthToken = (req: http.IncomingMessage): boolean => {
+  let token: string | null = null;
+  if (req.url) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    token = url.searchParams.get('token');
+  }
+
+  if (!token && req.headers['x-access-token']) {
+    token = req.headers['x-access-token'] as string;
+  }
+
+  if (!token) {
+    console.warn('[conn] A token is required for authentication');
+    tracker.track('server-auth-token-verification', {
+      successful: false,
+      present: false,
+      error: 'No token was supplied',
+    });
+    return false;
+  }
+
+  try {
+    validateAuthToken(token);
+    console.info('[conn] Token was successfully validated');
+    tracker.track('server-auth-token-verification', {
+      successful: true,
+      present: true,
+    });
+  } catch (err) {
+    console.warn('[conn] An invalid token was supplied for authentication');
+    tracker.track('server-auth-token-verification', {
+      successful: false,
+      present: true,
+      error: err.toString(),
+    });
+    return false;
+  }
+  return true;
+};
+
 /**
- * Orchestrates the creation of the HTTP server, proxy, and web socket.
+ * Orchestrates the creation of the HTTP server, proxy, and WS server.
  * @param config Server configuration.
- * @returns Returns a promise to the created server, proxy and web socket.
+ * @returns Returns a promise to the created server, proxy and WS server.
  */
 export async function startServer(config: Config): Promise<{
   app: Express;
@@ -72,7 +114,7 @@ async function startHTTPServer(config: Config): Promise<{
   });
 
   app.get('/', (_req, res) => {
-    fs.readFile(path.join(config.staticDir, config.entry), (_err, content) => {
+    fs.readFile(path.join(config.staticPath, config.entry), (_err, content) => {
       res.end(content);
     });
   });
@@ -81,7 +123,7 @@ async function startHTTPServer(config: Config): Promise<{
     res.end('flipper-ok');
   });
 
-  app.use(express.static(config.staticDir));
+  app.use(express.static(config.staticPath));
 
   return startProxyServer(config, app);
 }
@@ -134,6 +176,7 @@ async function startProxyServer(
     console.warn(
       `Cannot start flipper-server because socket ${socketPath} is in use.`,
     );
+    tracker.track('server-socket-already-in-use', {});
   } else {
     console.info(`Cleaning up stale socket ${socketPath}`);
     await fs.rm(socketPath, {force: true});
@@ -169,6 +212,7 @@ async function startProxyServer(
       res.writeHead(502, 'Failed to proxy request');
     }
     res.end('Failed to proxy request: ' + err);
+    tracker.track('server-proxy-error', {error: err.message});
   });
 
   return new Promise((resolve) => {
@@ -180,6 +224,10 @@ async function startProxyServer(
       return new Promise((resolve) => {
         proxyServer?.listen(config.port);
         server.listen(socketPath, undefined, () => resolve());
+        tracker.track('server-started', {
+          port: config.port,
+          tcp: config.tcp,
+        });
       });
     };
     resolve({app, server, socket, readyForIncomingConnections});
@@ -217,8 +265,9 @@ function addWebsocket(server: http.Server, config: Config) {
       possibleHosts.includes(req.headers.host)
     ) {
       // no origin header? The request is not originating from a browser, so should be OK to pass through
-      // If origin matches our own address, it means we are serving the page
-      return true;
+      // If origin matches our own address, it means we are serving the page.
+
+      return process.env.SKIP_TOKEN_VERIFICATION ? true : verifyAuthToken(req);
     } else {
       // for now we don't allow cross origin request, so that an arbitrary website cannot try to
       // connect a socket to localhost:serverport, and try to use the all powerful Flipper APIs to read

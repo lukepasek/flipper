@@ -21,16 +21,17 @@ import {useHotkeys} from 'react-hotkeys-hook';
 import {Id, Metadata, MetadataId, UINode} from '../types';
 import {PerfStats} from './PerfStats';
 import {Visualization2D} from './Visualization2D';
-import {useKeyboardModifiers} from '../hooks/useKeyboardModifiers';
 import {Inspector} from './sidebar/Inspector';
 import {Controls} from './Controls';
 import {Button, Spin} from 'antd';
 import {QueryClientProvider} from 'react-query';
 import {Tree2} from './Tree';
+import {StreamInterceptorErrorView} from './StreamInterceptorErrorView';
 
 export function Component() {
   const instance = usePlugin(plugin);
   const rootId = useValue(instance.rootId);
+  const streamState = useValue(instance.uiState.streamState);
   const visualiserWidth = useValue(instance.uiState.visualiserWidth);
   const nodes: Map<Id, UINode> = useValue(instance.nodes);
   const metadata: Map<MetadataId, Metadata> = useValue(instance.metadata);
@@ -38,8 +39,6 @@ export function Component() {
   const [showPerfStats, setShowPerfStats] = useState(false);
 
   useHotkeys('ctrl+i', () => setShowPerfStats((show) => !show));
-
-  const {ctrlPressed} = useKeyboardModifiers();
 
   const [bottomPanelComponent, setBottomPanelComponent] = useState<
     ReactNode | undefined
@@ -51,9 +50,34 @@ export function Component() {
     setBottomPanelComponent(undefined);
   };
 
+  if (streamState.state === 'UnrecoverableError') {
+    return (
+      <StreamInterceptorErrorView
+        title="Oops"
+        message="Something has gone horribly wrong, we are aware of this and are looking into it"
+      />
+    );
+  }
+
+  if (streamState.state === 'StreamInterceptorRetryableError') {
+    return (
+      <StreamInterceptorErrorView
+        message={streamState.error.message}
+        title={streamState.error.title}
+        retryCallback={streamState.retryCallback}
+      />
+    );
+  }
+
   if (showPerfStats) return <PerfStats events={instance.perfEvents} />;
 
-  if (rootId) {
+  if (rootId == null || streamState.state === 'RetryingAfterError') {
+    return (
+      <Centered>
+        <Spin data-testid="loading-indicator" />
+      </Centered>
+    );
+  } else {
     return (
       <QueryClientProvider client={instance.queryClient}>
         <Layout.Container grow padh="small" padv="medium">
@@ -77,7 +101,6 @@ export function Component() {
                       width={visualiserWidth}
                       nodes={nodes}
                       onSelectNode={instance.uiActions.onSelectNode}
-                      modifierPressed={ctrlPressed}
                     />
                   </Layout.ScrollContainer>
                 </ResizablePanel>
@@ -98,12 +121,6 @@ export function Component() {
       </QueryClientProvider>
     );
   }
-
-  return (
-    <Centered>
-      <Spin data-testid="loading-indicator" />
-    </Centered>
-  );
 }
 
 export function Centered(props: {children: React.ReactNode}) {

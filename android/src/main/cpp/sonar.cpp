@@ -46,8 +46,20 @@ namespace
     __android_log_write(ANDROID_LOG_ERROR, "FLIPPER", message.c_str());
   }
 
-  std::unique_ptr<facebook::flipper::Scheduler> sonarScheduler;
-  std::unique_ptr<facebook::flipper::Scheduler> connectionScheduler;
+  std::unique_ptr<facebook::flipper::Scheduler>& sonarScheduler() {
+  static   std::unique_ptr<facebook::flipper::Scheduler> scheduler;
+  return scheduler;
+}
+
+std::unique_ptr<facebook::flipper::Scheduler>& connectionScheduler() {
+  static std::unique_ptr<facebook::flipper::Scheduler> scheduler;
+  return scheduler;
+}
+
+std::unique_ptr<facebook::flipper::Scheduler>& connectionScheduler() {
+  static std::unique_ptr<facebook::flipper::Scheduler> scheduler;
+  return scheduler;
+}
 
   class JEventBase : public jni::HybridClass<JEventBase>
   {
@@ -1216,44 +1228,43 @@ namespace
       }
     }
 
-    static void init(
-        jni::alias_ref<jclass>,
-        JEventBase *callbackWorker,
-        JEventBase *connectionWorker,
-        int insecurePort,
-        int securePort,
-        int altInsecurePort,
-        int altSecurePort,
-        const std::string host,
-        const std::string os,
-        const std::string device,
-        const std::string deviceId,
-        const std::string app,
-        const std::string appId,
-        const std::string privateAppDirectory)
-    {
-      sonarScheduler =
-          std::make_unique<FollyScheduler>(callbackWorker->eventBase());
-      connectionScheduler =
-          std::make_unique<FollyScheduler>(connectionWorker->eventBase());
+  static void init(
+      jni::alias_ref<jclass>,
+      JEventBase* callbackWorker,
+      JEventBase* connectionWorker,
+      int insecurePort,
+      int securePort,
+      int altInsecurePort,
+      int altSecurePort,
+      const std::string host,
+      const std::string os,
+      const std::string device,
+      const std::string deviceId,
+      const std::string app,
+      const std::string appId,
+      const std::string privateAppDirectory) {
+    sonarScheduler =
+        std::make_unique<FollyScheduler>(callbackWorker->eventBase());
+    connectionScheduler =
+        std::make_unique<FollyScheduler>(connectionWorker->eventBase());
 
-      FlipperClient::init(
-          {{std::move(host),
-            std::move(os),
-            std::move(device),
-            std::move(deviceId),
-            std::move(app),
-            std::move(appId),
-            std::move(privateAppDirectory)},
-           sonarScheduler.get(),
-           connectionScheduler.get(),
-           insecurePort,
-           securePort,
-           altInsecurePort,
-           altSecurePort});
-      facebook::flipper::FlipperSocketProvider::setDefaultProvider(
-          std::make_unique<JFlipperSocketProvider>());
-    }
+    FlipperClient::init(
+        {{std::move(host),
+          std::move(os),
+          std::move(device),
+          std::move(deviceId),
+          std::move(app),
+          std::move(appId),
+          std::move(privateAppDirectory)},
+         sonarScheduler.get(),
+         connectionScheduler.get(),
+         insecurePort,
+         securePort,
+         altInsecurePort,
+         altSecurePort});
+    facebook::flipper::FlipperSocketProvider::setDefaultProvider(
+        std::make_unique<JFlipperSocketProvider>());
+  }
 
   private:
     friend HybridBase;

@@ -49,6 +49,7 @@ import {
 } from '../utils/certificateUtils';
 import DesktopCertificateProvider from '../devices/desktop/DesktopCertificateProvider';
 import WWWCertificateProvider from '../fb-stubs/WWWCertificateProvider';
+import {tracker} from '../utils/tracker';
 
 type ClientTimestampTracker = {
   insecureStart?: number;
@@ -186,6 +187,15 @@ export class ServerController
       `[conn] Connection established: ${app} on ${device_id}. Medium ${medium}. CSR: ${csr_path}`,
       cloneClientQuerySafeForLogging(clientQuery),
     );
+
+    tracker.track('app-connection-created', {
+      app,
+      os,
+      device,
+      device_id,
+      medium,
+    });
+
     return this.addConnection(
       clientConnection,
       {
@@ -213,19 +223,18 @@ export class ServerController
   onSecureConnectionAttempt(clientQuery: SecureClientQuery): void {
     const strippedClientQuery = (({device_id, ...o}) => o)(clientQuery);
     let id = buildClientId({device_id: 'unknown', ...strippedClientQuery});
-    const tracker = this.timestamps.get(id);
-    if (tracker) {
+    const timestamp = this.timestamps.get(id);
+    if (timestamp) {
       this.timestamps.delete(id);
     }
     id = buildClientId(clientQuery);
     this.timestamps.set(id, {
       secureStart: Date.now(),
-      ...tracker,
+      ...timestamp,
     });
 
-    this.logger.track(
-      'usage',
-      'trusted-request-handler-called',
+    tracker.track(
+      'app-connection-secure-attempt',
       (({csr, ...o}) => o)(clientQuery),
     );
 
@@ -246,8 +255,9 @@ export class ServerController
 
     this.connectionTracker.logConnectionAttempt(clientQuery);
 
-    if (this.timeHandlers.get(clientQueryToKey(clientQuery))) {
-      clearTimeout(this.timeHandlers.get(clientQueryToKey(clientQuery))!);
+    const timeout = this.timeHandlers.get(clientQueryToKey(clientQuery));
+    if (timeout) {
+      clearTimeout(timeout);
     }
 
     const transformedMedium = transformCertificateExchangeMediumToType(
@@ -272,7 +282,9 @@ export class ServerController
     this.timestamps.set(id, {
       insecureStart: Date.now(),
     });
-    this.logger.track('usage', 'untrusted-request-handler-called', clientQuery);
+
+    tracker.track('app-connection-insecure-attempt', clientQuery);
+
     this.connectionTracker.logConnectionAttempt(clientQuery);
 
     const client: UninitializedClient = {
@@ -361,9 +373,20 @@ export class ServerController
             }, 30 * 1000),
           );
 
+          tracker.track('app-connection-certificate-exchange', {
+            ...clientQuery,
+            successful: true,
+            device_id: response.deviceId,
+          });
+
           resolve(response);
         })
-        .catch((error) => {
+        .catch((error: Error) => {
+          tracker.track('app-connection-certificate-exchange', {
+            ...clientQuery,
+            successful: false,
+            error: error.message,
+          });
           reject(error);
         });
     });

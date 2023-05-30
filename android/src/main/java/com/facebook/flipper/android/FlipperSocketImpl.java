@@ -39,10 +39,10 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
+import javax.net.SocketFactory;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
-import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import org.java_websocket.client.WebSocketClient;
@@ -88,6 +88,7 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
        * certificate exchange.
        */
       FlipperObject authenticationObject;
+      SocketFactory socketFactory;
 
       if (StaticFlipperClientConfig.isEnabled()) {
         authenticationObject = StaticFlipperClientConfig.getAuthenticationObject();
@@ -130,17 +131,19 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
               new TrustManager[] { new FlipperTrustManager(cert_ca_path) }, null);
         }
 
-        SSLSocketFactory factory = sslContext.getSocketFactory();
-
-        this.setSocketFactory(
-            new DelegatingSocketFactory(factory) {
-              @Override
-              protected Socket configureSocket(Socket socket) {
-                TrafficStats.setThreadStatsTag(SOCKET_TAG);
-                return socket;
-              }
-            });
+        socketFactory = sslContext.getSocketFactory();
+      } else {
+        socketFactory = SocketFactory.getDefault();
       }
+
+      this.setSocketFactory(
+          new DelegatingSocketFactory(socketFactory) {
+            @Override
+            protected Socket configureSocket(Socket socket) {
+              TrafficStats.setThreadStatsTag(SOCKET_TAG);
+              return socket;
+            }
+          });
 
       this.connect();
     } catch (Exception e) {
