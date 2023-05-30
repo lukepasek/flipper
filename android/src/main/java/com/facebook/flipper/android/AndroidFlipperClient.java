@@ -20,6 +20,8 @@ import com.facebook.flipper.BuildConfig;
 import com.facebook.flipper.core.FlipperClient;
 import javax.annotation.Nullable;
 
+import java.util.Map;
+
 public final class AndroidFlipperClient {
   private static boolean sIsInitialized = false;
   private static FlipperThread sFlipperThread;
@@ -29,14 +31,30 @@ public final class AndroidFlipperClient {
       "android.permission.ACCESS_WIFI_STATE"
   };
   private static final String SHARED_PREF_FILE_NAME = "flipper.config";
+  private static final String TAG = "FlipperClient";
 
   public static synchronized FlipperClient getInstance(
       Context context, String id, String deviceName, String processName, String packageName) {
     if (!sIsInitialized) {
       if (!(BuildConfig.IS_INTERNAL_BUILD || BuildConfig.LOAD_FLIPPER_EXPLICIT)) {
-        Log.e("Flipper", "Attempted to initialize in non-internal build");
+        Log.e(TAG, "Attempted to initialize in non-internal build");
         return null;
       }
+
+      Log.i(TAG,
+          "=============================== Creating custom AndroidFlipperClient ===============================");
+
+      SharedPreferences sharedPref2 = context.getApplicationContext().getSharedPreferences(
+          SHARED_PREF_FILE_NAME,
+          Context.MODE_PRIVATE);
+
+      for (Map.Entry entry : sharedPref2.getAll().entrySet()) {
+        Log.i(TAG, "Custom Flipper config: " + entry.getKey() + " -> " + entry.getValue());
+      }
+      if (StaticFlipperClientConfig.isEnabled()) {
+        Log.i(TAG, "Custom Flipper config: using static class StaticFlipperClientConfig as configuration source");
+      }
+
       checkRequiredPermissions(context);
       sFlipperThread = new FlipperThread("FlipperEventBaseThread");
       sFlipperThread.start();
@@ -44,14 +62,17 @@ public final class AndroidFlipperClient {
       sConnectionThread.start();
 
       final Context app = context.getApplicationContext() == null ? context : context.getApplicationContext();
-
-      // exempt this disk read/write as this is a debug tool
-      StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskWrites();
       String privateAppDirectory;
-      try {
-        privateAppDirectory = context.getFilesDir().getAbsolutePath();
-      } finally {
-        StrictMode.setThreadPolicy(oldPolicy);
+      if (StaticFlipperClientConfig.isEnabled()) {
+        privateAppDirectory = "";
+      } else {
+        // exempt this disk read/write as this is a debug tool
+        StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskWrites();
+        try {
+          privateAppDirectory = context.getFilesDir().getAbsolutePath();
+        } finally {
+          StrictMode.setThreadPolicy(oldPolicy);
+        }
       }
       FlipperClientImpl.init(
           sFlipperThread.getEventBase(),
@@ -60,10 +81,10 @@ public final class AndroidFlipperClient {
           // getSecurePort(app, FlipperProps.getSecurePort()),
           // getAltInsecurePort(app, FlipperProps.getAltInsecurePort()),
           // getAltSecurePort(app, FlipperProps.getAltSecurePort()),
-          getInsecurePort(app, FlipperProps.DEFAULT_INSECURE_PORT),
-          getSecurePort(app, FlipperProps.DEFAULT_SECURE_PORT),
-          getAltInsecurePort(app, FlipperProps.DEFAULT_ALT_INSECURE_PORT),
-          getAltSecurePort(app, FlipperProps.DEFAULT_ALT_SECURE_PORT),
+          getSharedPreferencesIntValue(app, "insecure_port", FlipperProps.DEFAULT_INSECURE_PORT),
+          getSharedPreferencesIntValue(app, "secure_port", FlipperProps.DEFAULT_SECURE_PORT),
+          getSharedPreferencesIntValue(app, "alt_insecure_port", FlipperProps.DEFAULT_ALT_INSECURE_PORT),
+          getSharedPreferencesIntValue(app, "alt_secure_port", FlipperProps.DEFAULT_ALT_SECURE_PORT),
           getServerHost(app),
           "Android",
           deviceName,
@@ -76,54 +97,44 @@ public final class AndroidFlipperClient {
     return FlipperClientImpl.getInstance();
   }
 
-  private static String getSharedPreferencesValue(Context context, String fileName, String key, String defaultValue) {
-    SharedPreferences sharedPreferences = context.getApplicationContext().getSharedPreferences(fileName,
+  private static String getSharedPreferencesStringValue(Context context, String key,
+      String defaultValue) {
+    SharedPreferences sharedPreferences = context.getApplicationContext().getSharedPreferences(
+        SHARED_PREF_FILE_NAME,
         Context.MODE_PRIVATE);
-    if (sharedPreferences != null) {
+    if (sharedPreferences != null && sharedPreferences.contains(key)) {
       String value = sharedPreferences.getString(key, defaultValue);
       if (value != null) {
-        Log.i("Flipper",
-            "Using server " + key + " from shared preferences ('" + SHARED_PREF_FILE_NAME + "'): '" + value + "'");
+        Log.i(TAG,
+            "Using " + key + " from shared preferences ('" + SHARED_PREF_FILE_NAME + "'): '" + value + "'");
         return value;
       }
     } else {
-      Log.i("Flipper",
-          "Shared preferences ('" + SHARED_PREF_FILE_NAME + "') not available - using default value for '" + key + "': "
+      Log.i(TAG,
+          "Value not available in shared preferences ('" + SHARED_PREF_FILE_NAME
+              + "'): - using default value for '" + key + "': "
               + defaultValue);
     }
     return defaultValue;
   }
 
-  private static int getInsecurePort(Context app, int defaultPort) {
-    String port = getSharedPreferencesValue(app, SHARED_PREF_FILE_NAME, "insecure_port", null);
-    if (port != null) {
-      return Integer.parseInt(port);
+  private static int getSharedPreferencesIntValue(Context context, String key,
+      int defaultValue) {
+    SharedPreferences sharedPreferences = context.getApplicationContext().getSharedPreferences(
+        SHARED_PREF_FILE_NAME,
+        Context.MODE_PRIVATE);
+    if (sharedPreferences != null && sharedPreferences.contains(key)) {
+      int value = sharedPreferences.getInt(key, 0);
+      Log.i(TAG,
+          "Using " + key + " from shared preferences ('" + SHARED_PREF_FILE_NAME + "'): '" + value + "'");
+      return value;
+    } else {
+      Log.i(TAG,
+          "Value not available in shared preferences ('" + SHARED_PREF_FILE_NAME
+              + "'): - using default value for '" + key + "': "
+              + defaultValue);
     }
-    return defaultPort;
-  }
-
-  private static int getSecurePort(Context app, int defaultPort) {
-    String port = getSharedPreferencesValue(app, SHARED_PREF_FILE_NAME, "secure_port", null);
-    if (port != null) {
-      return Integer.parseInt(port);
-    }
-    return defaultPort;
-  }
-
-  private static int getAltInsecurePort(Context app, int defaultPort) {
-    String port = getSharedPreferencesValue(app, SHARED_PREF_FILE_NAME, "alt_insecure_port", null);
-    if (port != null) {
-      return Integer.parseInt(port);
-    }
-    return defaultPort;
-  }
-
-  private static int getAltSecurePort(Context app, int defaultPort) {
-    String port = getSharedPreferencesValue(app, SHARED_PREF_FILE_NAME, "alt_secure_port", null);
-    if (port != null) {
-      return Integer.parseInt(port);
-    }
-    return defaultPort;
+    return defaultValue;
   }
 
   public static synchronized FlipperClient getInstance(Context context) {
@@ -145,8 +156,7 @@ public final class AndroidFlipperClient {
     // ACCESS_WIFI_STATE permission.
     for (String permission : REQUIRED_PERMISSIONS) {
       if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_DENIED) {
-        Log.e(
-            "Flipper",
+        Log.e(TAG,
             String.format("App needs permission \"%s\" to work with Flipper.", permission));
       }
     }
@@ -174,7 +184,7 @@ public final class AndroidFlipperClient {
   }
 
   static String getServerHost(Context context) {
-    String configuredHost = getSharedPreferencesValue(context, SHARED_PREF_FILE_NAME, "host", null);
+    String configuredHost = getSharedPreferencesStringValue(context, "host", null);
     if (configuredHost != null) {
       return configuredHost;
     }

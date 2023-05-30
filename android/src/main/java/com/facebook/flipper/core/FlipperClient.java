@@ -31,4 +31,7 @@ public interface FlipperClient {
   String getState();
 
   StateSummary getStateSummary();
+
+  void setCertificateProvider();
+
 }

@@ -12,6 +12,8 @@ import com.facebook.flipper.core.FlipperSocketEventHandler;
 import com.facebook.jni.HybridData;
 import com.facebook.proguard.annotations.DoNotStrip;
 
+import android.util.Log;
+
 @DoNotStrip
 class FlipperSocketEventHandlerImpl implements FlipperSocketEventHandler {
 
@@ -23,11 +25,15 @@ class FlipperSocketEventHandlerImpl implements FlipperSocketEventHandler {
 
   @Override
   public void onConnectionEvent(SocketEvent event) {
+    Log.d("FlipperSocketEventHandlerImpl", "connection event: " + event);
+
     reportConnectionEvent(event.ordinal());
   }
 
   @Override
   public void onMessageReceived(String message) {
+    Log.d("FlipperSocketEventHandlerImpl", "message recv: " + message);
+
     reportMessageReceived(message);
   }
 

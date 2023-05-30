@@ -60,7 +60,8 @@ class FlipperClientImpl implements FlipperClient {
   public native void addPluginNative(FlipperPlugin plugin);
 
   /**
-   * @deprecated Prefer using {@link #getPluginByClass(Class)} over the stringly-typed interface.
+   * @deprecated Prefer using {@link #getPluginByClass(Class)} over the
+   *             stringly-typed interface.
    */
   @Override
   @Nullable
@@ -71,7 +72,7 @@ class FlipperClientImpl implements FlipperClient {
   @Override
   public <T extends FlipperPlugin> T getPluginByClass(Class<T> cls) {
     final String id = mClassIdentifierMap.get(cls);
-    //noinspection deprecation
+    // noinspection deprecation
     return getPlugin(id);
   }
 
@@ -100,4 +101,7 @@ class FlipperClientImpl implements FlipperClient {
 
   @Override
   public native StateSummary getStateSummary();
+
+  @Override
+  public native void setCertificateProvider();
 }

@@ -16,6 +16,7 @@ import com.facebook.flipper.core.FlipperSocketEventHandler;
 import com.facebook.proguard.annotations.DoNotStrip;
 import com.facebook.soloader.SoLoader;
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.Socket;
@@ -34,6 +35,7 @@ import java.security.cert.PKIXParameters;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +62,12 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
   FlipperSocketEventHandler mEventHandler;
 
   FlipperSocketImpl(String url) throws URISyntaxException {
-    super(new URI(url));
+    super(new URI(logUrl(url)));
+  }
+
+  private static String logUrl(String url) throws URISyntaxException {
+    Log.i("FlipperSocketImpl", "in URI: " + url);
+    return url;
   }
 
   public void flipperSetEventHandler(FlipperSocketEventHandler eventHandler) {
@@ -74,31 +81,54 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
     }
     try {
       /**
-       * Authentication object, if present, will be used to create a valid SSL context to establish
-       * a secure socket connection. If absent, then a connection will be established to perform the
+       * Authentication object, if present, will be used to create a valid SSL context
+       * to establish
+       * a secure socket connection. If absent, then a connection will be established
+       * to perform the
        * certificate exchange.
        */
-      FlipperObject authenticationObject = this.mEventHandler.onAuthenticationChallengeReceived();
+      FlipperObject authenticationObject;
+
+      if (StaticFlipperClientConfig.isEnabled()) {
+        authenticationObject = StaticFlipperClientConfig.getAuthenticationObject();
+      } else {
+        authenticationObject = this.mEventHandler.onAuthenticationChallengeReceived();
+      }
+
+      Log.i("FlipperSocketImpl", "Got authentication object: " + authenticationObject);
+
       if (authenticationObject.contains("certificates_client_path")
           && authenticationObject.contains("certificates_client_pass")) {
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        KeyStore ks = KeyStore.getInstance("PKCS12");
-
         String cert_client_path = authenticationObject.getString("certificates_client_path");
         String cert_client_pass = authenticationObject.getString("certificates_client_pass");
         String cert_ca_path = authenticationObject.getString("certificates_ca_path");
 
-        try (InputStream clientCertificateStream = new FileInputStream(cert_client_path)) {
-          ks.load(clientCertificateStream, cert_client_pass.toCharArray());
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+
+        if (StaticFlipperClientConfig.USE_STATIC_CONFIG.equals(cert_client_path)) {
+          Log.i("FlipperSocketImpl", "Using client key and certificate from static config class");
+          StaticFlipperClientConfig.loadClientKeyStore(ks);
+        } else {
+          try (InputStream clientCertificateStream = new FileInputStream(cert_client_path)) {
+            ks.load(clientCertificateStream, cert_client_pass.toCharArray());
+          }
         }
 
-        KeyManagerFactory kmf =
-            KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(ks, cert_client_pass.toCharArray());
 
-        sslContext.init(
-            kmf.getKeyManagers(), new TrustManager[] {new FlipperTrustManager(cert_ca_path)}, null);
+        if (StaticFlipperClientConfig.USE_STATIC_CONFIG.equals(cert_ca_path)) {
+          Log.i("FlipperSocketImpl", "Using CA certificate from static config class");
+          sslContext.init(
+              kmf.getKeyManagers(),
+              new TrustManager[] { new FlipperTrustManager(StaticFlipperClientConfig.getCaCertificate()) },
+              null);
+        } else {
+          sslContext.init(
+              kmf.getKeyManagers(),
+              new TrustManager[] { new FlipperTrustManager(cert_ca_path) }, null);
+        }
 
         SSLSocketFactory factory = sslContext.getSocketFactory();
 
@@ -114,7 +144,7 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
 
       this.connect();
     } catch (Exception e) {
-      Log.e("Flipper", "Failed to initialize the socket before connect. " + e.getMessage());
+      Log.e("Flipper", "Failed to initialize the socket before connect. " + e.getMessage(), e);
       this.mEventHandler.onConnectionEvent(FlipperSocketEventHandler.SocketEvent.ERROR);
     }
   }
@@ -126,6 +156,7 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
 
   @Override
   public void onOpen(ServerHandshake handshakedata) {
+    Log.i("FlipperSocketImpl", "socket open: " + handshakedata);
     this.mEventHandler.onConnectionEvent(FlipperSocketEventHandler.SocketEvent.OPEN);
   }
 
@@ -140,16 +171,21 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
   }
 
   /**
-   * If no socket factory is set, a javax.net.ssl.SSLHandshakeException will be thrown with message:
-   * No subjectAltNanmes on the certificate match. If set, but without a key manager and/or trust
+   * If no socket factory is set, a javax.net.ssl.SSLHandshakeException will be
+   * thrown with message:
+   * No subjectAltNanmes on the certificate match. If set, but without a key
+   * manager and/or trust
    * manager, the same error will be thrown.
    *
    * @param ex
    */
   @Override
   public void onError(Exception ex) {
+    Log.e("FlipperSocketImpl", "socket open error: " + ex, ex);
+
     // Check the exception for OpenSSL error and change the event type.
-    // Required for Flipper as the current implementation treats these errors differently.
+    // Required for Flipper as the current implementation treats these errors
+    // differently.
     if (ex instanceof javax.net.ssl.SSLHandshakeException) {
       this.mEventHandler.onConnectionEvent(FlipperSocketEventHandler.SocketEvent.SSL_ERROR);
     } else {
@@ -160,19 +196,20 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
   @Override
   public void flipperDisconnect() {
     this.mEventHandler.onConnectionEvent(FlipperSocketEventHandler.SocketEvent.CLOSE);
-    this.mEventHandler =
-        new FlipperSocketEventHandler() {
-          @Override
-          public void onConnectionEvent(SocketEvent event) {}
+    this.mEventHandler = new FlipperSocketEventHandler() {
+      @Override
+      public void onConnectionEvent(SocketEvent event) {
+      }
 
-          @Override
-          public void onMessageReceived(String message) {}
+      @Override
+      public void onMessageReceived(String message) {
+      }
 
-          @Override
-          public FlipperObject onAuthenticationChallengeReceived() {
-            return null;
-          }
-        };
+      @Override
+      public FlipperObject onAuthenticationChallengeReceived() {
+        return null;
+      }
+    };
     super.close();
   }
 
@@ -201,6 +238,15 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
       }
     }
 
+    public FlipperTrustManager(Certificate cert) throws Exception {
+      this.mCA = cert;
+
+      if (mCA == null) {
+        /** Unable to find a valid CA. */
+        throw new Exception("Unable to find a valid trust manager.");
+      }
+    }
+
     public void checkClientTrusted(X509Certificate[] chain, String algorithm)
         throws CertificateException {
       throw new CertificateException("No client certificate verification provided");
@@ -220,9 +266,12 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
 
     public void checkServerTrustedImpl(X509Certificate[] chain) throws CertificateException {
       /**
-       * If we expect a 2 certs chain (CA + certificate), lets enforce that (allow only 2 certs in
-       * the chain) - this would prevent attacks where validators fail to traverse the whole chain
-       * and then you can have an invalid chain that still passes the CA validation (it has been a
+       * If we expect a 2 certs chain (CA + certificate), lets enforce that (allow
+       * only 2 certs in
+       * the chain) - this would prevent attacks where validators fail to traverse the
+       * whole chain
+       * and then you can have an invalid chain that still passes the CA validation
+       * (it has been a
        * common vulnerability in the past)
        */
       if (chain.length != 2) {
@@ -234,9 +283,12 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
         certificate.checkValidity(now);
 
         /**
-         * Ensure the certificates are considered invalid after a certain period of time, enforced
-         * by the mobile client instead of based on cert/CA expiration under desktop control, they
-         * are re-used (desktop app generate them and then they are re-used for subsequent
+         * Ensure the certificates are considered invalid after a certain period of
+         * time, enforced
+         * by the mobile client instead of based on cert/CA expiration under desktop
+         * control, they
+         * are re-used (desktop app generate them and then they are re-used for
+         * subsequent
          * connections) the client has a TTL (currently set at 30 days).
          */
         final Date notBefore = certificate.getNotBefore();
@@ -254,8 +306,7 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
       // Check issued by trusted issuer
       final CertPathValidator certificatePathValidator;
       try {
-        certificatePathValidator =
-            CertPathValidator.getInstance(CertPathValidator.getDefaultType());
+        certificatePathValidator = CertPathValidator.getInstance(CertPathValidator.getDefaultType());
       } catch (NoSuchAlgorithmException e) {
         throw new CertificateException(e);
       }
@@ -274,7 +325,8 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
 
       pkixParameters.setDate(now);
       /**
-       * Note: considering this is a self-signed CA generated by the desktop app and passed back to
+       * Note: considering this is a self-signed CA generated by the desktop app and
+       * passed back to
        * the android client then revocation should not be a concern.
        */
       pkixParameters.setRevocationEnabled(false);
@@ -286,7 +338,7 @@ class FlipperSocketImpl extends WebSocketClient implements FlipperSocket {
     }
 
     public X509Certificate[] getAcceptedIssuers() {
-      return new X509Certificate[] {(X509Certificate) mCA};
+      return new X509Certificate[] { (X509Certificate) mCA };
     }
   }
 }

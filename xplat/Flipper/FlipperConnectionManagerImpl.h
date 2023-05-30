@@ -14,84 +14,88 @@
 #include "FlipperSocket.h"
 #include "FlipperState.h"
 
-namespace facebook {
-namespace flipper {
+namespace facebook
+{
+    namespace flipper
+    {
 
-class ConnectionEvents;
-class ConnectionContextStore;
-class FlipperRSocketResponder;
-class FlipperConnectionManagerWrapper;
-class FlipperConnectionManagerImpl : public FlipperConnectionManager {
-  friend ConnectionEvents;
+        class ConnectionEvents;
+        class ConnectionContextStore;
+        class FlipperRSocketResponder;
+        class FlipperConnectionManagerWrapper;
+        class FlipperConnectionManagerImpl : public FlipperConnectionManager
+        {
+            friend ConnectionEvents;
 
- public:
-  FlipperConnectionManagerImpl(
-      FlipperInitConfig config,
-      std::shared_ptr<FlipperState> state,
-      std::shared_ptr<ConnectionContextStore> contextStore);
+        public:
+            FlipperConnectionManagerImpl(
+                FlipperInitConfig config,
+                std::shared_ptr<FlipperState> state,
+                std::shared_ptr<ConnectionContextStore> contextStore);
 
-  ~FlipperConnectionManagerImpl();
+            ~FlipperConnectionManagerImpl();
 
-  void start() override;
+            void start() override;
 
-  void stop() override;
+            void stop() override;
 
-  bool isOpen() const override;
+            bool isOpen() const override;
 
-  void setCallbacks(Callbacks* callbacks) override;
+            void setCallbacks(Callbacks *callbacks) override;
 
-  void sendMessage(const folly::dynamic& message) override;
+            void sendMessage(const folly::dynamic &message) override;
 
-  void sendMessageRaw(const std::string& message) override;
+            void sendMessageRaw(const std::string &message) override;
 
-  void onMessageReceived(
-      const folly::dynamic& message,
-      std::unique_ptr<FlipperResponder> responder) override;
+            void onMessageReceived(
+                const folly::dynamic &message,
+                std::unique_ptr<FlipperResponder> responder) override;
 
-  void reconnect();
-  void setCertificateProvider(
-      const std::shared_ptr<FlipperCertificateProvider> provider) override;
-  std::shared_ptr<FlipperCertificateProvider> getCertificateProvider() override;
+            void reconnect();
+            void setCertificateProvider(
+                const std::shared_ptr<FlipperCertificateProvider> provider) override;
+            std::shared_ptr<FlipperCertificateProvider> getCertificateProvider() override;
 
- private:
-  bool isOpen_ = false;
-  bool isStarted_ = false;
-  std::shared_ptr<FlipperCertificateProvider> certProvider_ = nullptr;
-  Callbacks* callbacks_;
-  DeviceData deviceData_;
-  std::shared_ptr<FlipperState> flipperState_;
-  int insecurePort;
-  int securePort;
-  int altInsecurePort;
-  int altSecurePort;
+        private:
+            bool isOpen_ = false;
+            bool isStarted_ = false;
+            std::shared_ptr<FlipperCertificateProvider> certProvider_ = nullptr;
+            Callbacks *callbacks_;
+            DeviceData deviceData_;
+            std::shared_ptr<FlipperState> flipperState_;
+            int insecurePort;
+            int securePort;
+            int altInsecurePort;
+            int altSecurePort;
 
-  Scheduler* flipperScheduler_;
-  Scheduler* connectionScheduler_;
+            Scheduler *flipperScheduler_;
+            Scheduler *connectionScheduler_;
 
-  std::unique_ptr<FlipperSocket> client_;
+            std::unique_ptr<FlipperSocket> client_;
 
-  bool connectionIsTrusted_;
-  bool certificateExchangeCompleted_ = false;
+            bool connectionIsTrusted_;
+            bool certificateExchangeCompleted_ = false;
 
-  int failedConnectionAttempts_ = 0;
-  int failedSocketConnectionAttempts = 0;
+            int failedConnectionAttempts_ = 0;
+            int failedSocketConnectionAttempts = 0;
 
-  std::shared_ptr<ConnectionContextStore> contextStore_;
-  std::shared_ptr<FlipperConnectionManagerWrapper> implWrapper_;
+            std::shared_ptr<ConnectionContextStore> contextStore_;
+            std::shared_ptr<FlipperConnectionManagerWrapper> implWrapper_;
 
-  void startSync();
-  bool connectAndExchangeCertificate();
-  bool connectSecurely();
-  bool isCertificateExchangeNeeded();
-  void requestSignedCertificate();
-  void processSignedCertificateResponse(
-      std::shared_ptr<FlipperStep> gettingCertificateStep,
-      std::string response,
-      bool isError);
-  bool isRunningInOwnThread();
-  void reevaluateSocketProvider();
-  std::string getDeviceId();
-};
+            void startSync();
+            bool connectAndExchangeCertificate();
+            bool connectSecurely();
+            bool isCertificateExchangeNeeded();
+            void requestSignedCertificate();
+            void processSignedCertificateResponse(
+                std::shared_ptr<FlipperStep> gettingCertificateStep,
+                std::string response,
+                bool isError);
+            bool isRunningInOwnThread();
+            void reevaluateSocketProvider();
+            std::string getDeviceId();
+            bool isCertificateDirectoryDefined();
+        };
 
-} // namespace flipper
+    } // namespace flipper
 } // namespace facebook
