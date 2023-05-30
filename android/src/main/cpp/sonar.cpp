@@ -49,17 +49,12 @@ namespace
   std::unique_ptr<facebook::flipper::Scheduler>& sonarScheduler() {
   static   std::unique_ptr<facebook::flipper::Scheduler> scheduler;
   return scheduler;
-}
+  }
 
-std::unique_ptr<facebook::flipper::Scheduler>& connectionScheduler() {
-  static std::unique_ptr<facebook::flipper::Scheduler> scheduler;
-  return scheduler;
-}
-
-std::unique_ptr<facebook::flipper::Scheduler>& connectionScheduler() {
-  static std::unique_ptr<facebook::flipper::Scheduler> scheduler;
-  return scheduler;
-}
+  std::unique_ptr<facebook::flipper::Scheduler>& connectionScheduler() {
+    static std::unique_ptr<facebook::flipper::Scheduler> scheduler;
+    return scheduler;
+  }
 
   class JEventBase : public jni::HybridClass<JEventBase>
   {
